@@ -7,6 +7,8 @@ import '../providers/theme_provider.dart';
 import '../providers/database_providers.dart'; // Added to access the real-time streams
 import '../widgets/new_log_sheet.dart';
 import '../providers/loan_controller.dart';
+import 'contacts_screen.dart';
+import 'transaction_detail_screen.dart';
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -32,10 +34,12 @@ class HomeScreen extends ConsumerWidget {
             tooltip: 'Toggle Theme',
             onPressed: () => ref.read(themeProvider.notifier).toggleTheme(),
           ),
-          IconButton(
+         IconButton(
             icon: const Icon(Icons.people_alt_outlined),
             tooltip: 'Contacts',
-            onPressed: () {}, // TODO: Build Contacts Screen next
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ContactsScreen()));
+            },
           ),
         ],
       ),
@@ -274,8 +278,8 @@ class HomeScreen extends ConsumerWidget {
               color: color,
             ),
           ),
-          onTap: () {
-            // Next up: Open evidence playback!
+         onTap: () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => TransactionDetailScreen(loan: loan, contactName: contactName)));
           },
         ),
       ),

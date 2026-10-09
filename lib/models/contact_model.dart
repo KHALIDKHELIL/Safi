@@ -4,42 +4,41 @@ class Contact {
   final String id;
   final String name;
   final String? phoneNumber;
-  final String? address;
-  final double trustScore; // Starts at 5.0, goes up/down based on payback history
+  final int trustScore;
 
   const Contact({
     required this.id,
     required this.name,
     this.phoneNumber,
-    this.address,
-    this.trustScore = 5.0,
+    this.trustScore = 5, // Default to 5 stars
   });
 
-  /// Safely converts Firestore data into a perfectly typed Dart object
-  factory Contact.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>?;
-    
-    if (data == null) {
-      return Contact(id: doc.id, name: 'Unknown');
-    }
+  // Used for saving data to Firebase
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'phone_number': phoneNumber,
+    'trust_score': trustScore,
+  };
 
+  // Fixed: Added fromFirestore back so your Riverpod streams compile perfectly!
+  factory Contact.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
     return Contact(
       id: doc.id,
-      name: data['name'] as String? ?? 'Unknown',
-      phoneNumber: data['phone_number'] as String?,
-      address: data['address'] as String?,
-      // Use num? to safely handle both int and double from Firestore
-      trustScore: (data['trust_score'] as num?)?.toDouble() ?? 5.0, 
+      name: data['name'] ?? 'Unknown',
+      phoneNumber: data['phone_number'],
+      trustScore: data['trust_score']?.toInt() ?? 5,
     );
   }
 
-  /// Converts the Dart object back to JSON for Firebase
-  Map<String, dynamic> toMap() {
-    return {
-      'name': name,
-      'phone_number': phoneNumber,
-      'address': address,
-      'trust_score': trustScore,
-    };
+  // Kept fromMap just in case you use it for local caching later
+  factory Contact.fromMap(Map<String, dynamic> map, String documentId) {
+    return Contact(
+      id: documentId,
+      name: map['name'] ?? '',
+      phoneNumber: map['phone_number'],
+      trustScore: map['trust_score']?.toInt() ?? 5,
+    );
   }
 }
