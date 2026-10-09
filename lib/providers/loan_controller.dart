@@ -13,7 +13,8 @@ class LoanController {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<void> createLog({
-    required String contactName,
+    String? existingContactId, // NEW: Pass this if they picked from the dropdown
+    String? newContactName,    // NEW: Pass this if it's a brand new person
     required double amount,
     required LoanType type,
     Uint8List? receiptPhotoBytes,
@@ -21,26 +22,33 @@ class LoanController {
     String? voiceNoteExt,
   }) async {
     try {
-      final contactRef = _firestore.collection('contacts').doc();
-      final newContact = Contact(id: contactRef.id, name: contactName);
-      
+      final batch = _firestore.batch();
       final loanRef = _firestore.collection('loans').doc();
+      String finalContactId;
+
+      // 1. Determine if we are using an existing contact or creating a new one
+      if (existingContactId != null) {
+        finalContactId = existingContactId;
+      } else if (newContactName != null && newContactName.isNotEmpty) {
+        final contactRef = _firestore.collection('contacts').doc();
+        finalContactId = contactRef.id;
+        final newContact = Contact(id: contactRef.id, name: newContactName);
+        batch.set(contactRef, newContact.toMap());
+      } else {
+        throw Exception('Must provide a contact name.');
+      }
+
+      // ... The rest of your local file saving logic stays EXACTLY the same ...
       String? localPhotoPath;
       String? localAudioPath;
 
-      // Ensure we only try to save local files if running on Android/iOS (Web doesn't have a normal file system)
       if (!kIsWeb) {
-        // Get the secure folder on your Android device
         final directory = await getApplicationDocumentsDirectory();
-
-        // 1. Save Photo Locally
         if (receiptPhotoBytes != null) {
           final photoFile = File('${directory.path}/${loanRef.id}.jpg');
           await photoFile.writeAsBytes(receiptPhotoBytes);
           localPhotoPath = photoFile.path;
         }
-
-        // 2. Save Audio Locally
         if (voiceNoteBytes != null) {
           final ext = voiceNoteExt ?? 'm4a';
           final audioFile = File('${directory.path}/${loanRef.id}.$ext');
@@ -49,21 +57,18 @@ class LoanController {
         }
       }
 
-      // 3. Save the text database entry with the local device paths included
+      // 2. Save the loan with the correct Contact ID
       final newLoan = Loan(
         id: loanRef.id,
-        contactId: contactRef.id,
+        contactId: finalContactId, // Uses the matched or new ID!
         amount: amount,
         type: type,
         timestamp: DateTime.now(),
-        receiptPhotoUrl: localPhotoPath, // Now saving a local phone path like /data/user/0/...
-        voiceNoteUrl: localAudioPath,    
+        receiptPhotoUrl: localPhotoPath,
+        voiceNoteUrl: localAudioPath,
       );
 
-      final batch = _firestore.batch();
-      batch.set(contactRef, newContact.toMap());
       batch.set(loanRef, newLoan.toMap());
-      
       await batch.commit();
     } catch (e) {
       throw Exception('Failed to save log: $e');

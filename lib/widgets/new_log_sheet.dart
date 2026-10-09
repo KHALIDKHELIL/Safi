@@ -1,11 +1,13 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // Needed for kIsWeb
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/loan_model.dart';
+import '../models/contact_model.dart';
 import '../providers/loan_controller.dart';
-import 'package:flutter/foundation.dart';
+import '../providers/database_providers.dart';
 
 class NewLogSheet extends ConsumerStatefulWidget {
   const NewLogSheet({super.key});
@@ -19,11 +21,11 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
   final _nameController = TextEditingController();
   LoanType _selectedType = LoanType.lent;
   bool _isLoading = false;
-  
-  // NEW: State variable to display errors inside the sheet
   String? _errorMessage; 
+  
+  // Tracks if the user picked a dropdown item instead of typing a new name
+  Contact? _selectedContact;
 
-  // --- Evidence Variables (Using Bytes for Web compatibility) ---
   Uint8List? _selectedPhotoBytes;
   Uint8List? _voiceNoteBytes;
   String? _voiceNoteExt;
@@ -35,18 +37,19 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
       final bytes = await pickedFile.readAsBytes();
       setState(() {
         _selectedPhotoBytes = bytes;
-        _errorMessage = null; // Clear old errors
+        _errorMessage = null; 
       });
     }
   }
-Future<void> _pickAudioFile() async {
+
+  Future<void> _pickAudioFile() async {
     try {
       final file = await FilePicker.pickFile(
         type: FileType.audio, 
       );
 
       if (file != null) {
-        // NEW v12 SYNTAX: Use await file.length() instead of file.size
+        // v12+ async length check
         final fileSize = await file.length() ?? 0; 
         
         if (fileSize > 10485760) {
@@ -68,22 +71,19 @@ Future<void> _pickAudioFile() async {
       setState(() => _errorMessage = 'Audio Pick Error: $e');
     }
   }
- Future<void> _submitLog() async {
-    final amount = double.tryParse(_amountController.text) ?? 0.0;
-    final name = _nameController.text.trim();
 
-    if (amount <= 0 || name.isEmpty) {
+  Future<void> _submitLog() async {
+    final amount = double.tryParse(_amountController.text) ?? 0.0;
+    final nameInput = _nameController.text.trim(); 
+
+    if (amount <= 0 || nameInput.isEmpty) {
       setState(() => _errorMessage = 'Please enter a valid amount and a contact name.');
       return;
     }
 
-    // NEW: Warn the user if they attached evidence while testing on the Web
     if (kIsWeb && (_selectedPhotoBytes != null || _voiceNoteBytes != null)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Testing on Web: Text saved to Firebase, but Evidence files are skipped. Run on Android to save files locally!'),
-          duration: Duration(seconds: 4),
-        ),
+        const SnackBar(content: Text('Testing on Web: Media files skipped.'))
       );
     }
 
@@ -93,8 +93,19 @@ Future<void> _pickAudioFile() async {
     });
 
     try {
+      String? existingId;
+      String? newName;
+
+      // Smart check: Did they select a contact from the dropdown list?
+      if (_selectedContact != null && _selectedContact!.name == nameInput) {
+        existingId = _selectedContact!.id; 
+      } else {
+        newName = nameInput; 
+      }
+
       await ref.read(loanControllerProvider).createLog(
-        contactName: name,
+        existingContactId: existingId,
+        newContactName: newName,
         amount: amount,
         type: _selectedType,
         receiptPhotoBytes: _selectedPhotoBytes,
@@ -109,6 +120,7 @@ Future<void> _pickAudioFile() async {
       });
     }
   }
+
   @override
   void dispose() {
     _amountController.dispose();
@@ -146,13 +158,43 @@ Future<void> _pickAudioFile() async {
           TextField(
             controller: _amountController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Amount (ETB)', prefixIcon: Icon(Icons.attach_money), border: OutlineInputBorder()),
+            decoration: const InputDecoration(
+              labelText: 'Amount (ETB)', 
+              prefixIcon: Icon(Icons.attach_money), 
+              border: OutlineInputBorder(),
+            ),
           ),
+          
           const SizedBox(height: 12),
-          TextField(
-            controller: _nameController,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(labelText: 'Contact Name', prefixIcon: Icon(Icons.person_outline), border: OutlineInputBorder()),
+          
+          // The Smart Dropdown wrapped in a Consumer to access Riverpod streams!
+          Consumer(
+            builder: (context, ref, child) {
+              final contactsAsync = ref.watch(contactsProvider);
+              
+              return contactsAsync.when(
+                data: (contacts) {
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      return DropdownMenu<Contact>(
+                        width: constraints.maxWidth, // Fills the container width perfectly
+                        controller: _nameController,
+                        label: const Text('Contact Name'),
+                        leadingIcon: const Icon(Icons.person_outline),
+                        enableFilter: true, // Enables typing to search the list
+                        requestFocusOnTap: true,
+                        dropdownMenuEntries: contacts.map((c) => DropdownMenuEntry(value: c, label: c.name)).toList(),
+                        onSelected: (contact) {
+                          setState(() => _selectedContact = contact);
+                        },
+                      );
+                    }
+                  );
+                },
+                loading: () => const Center(child: LinearProgressIndicator()),
+                error: (e, _) => Text('Failed to load contacts: $e', style: const TextStyle(color: Colors.red)),
+              );
+            },
           ),
 
           const SizedBox(height: 16),
@@ -178,7 +220,6 @@ Future<void> _pickAudioFile() async {
 
           const SizedBox(height: 16),
 
-          // --- THE NEW ERROR DISPLAY BOX ---
           if (_errorMessage != null)
             Container(
               width: double.infinity,

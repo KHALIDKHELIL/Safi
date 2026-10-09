@@ -71,6 +71,15 @@ class ContactsScreen extends ConsumerWidget {
           );
         },
       ),
+
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          // Calling the screen with NO contact triggers "Create Mode"
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const EditContactScreen()));
+        },
+        icon: const Icon(Icons.person_add_alt_1_rounded),
+        label: const Text('Add Contact'),
+      ),
     );
   }
 }
