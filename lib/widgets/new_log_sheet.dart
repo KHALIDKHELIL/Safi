@@ -1,6 +1,5 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // Needed for kIsWeb
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -19,11 +18,11 @@ class NewLogSheet extends ConsumerStatefulWidget {
 class _NewLogSheetState extends ConsumerState<NewLogSheet> {
   final _amountController = TextEditingController();
   final _nameController = TextEditingController();
+  final _reasonController = TextEditingController(); // NEW
   LoanType _selectedType = LoanType.lent;
   bool _isLoading = false;
   String? _errorMessage; 
   
-  // Tracks if the user picked a dropdown item instead of typing a new name
   Contact? _selectedContact;
 
   Uint8List? _selectedPhotoBytes;
@@ -49,7 +48,6 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
       );
 
       if (file != null) {
-        // v12+ async length check
         final fileSize = await file.length() ?? 0; 
         
         if (fileSize > 10485760) {
@@ -75,6 +73,7 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
   Future<void> _submitLog() async {
     final amount = double.tryParse(_amountController.text) ?? 0.0;
     final nameInput = _nameController.text.trim(); 
+    final reasonInput = _reasonController.text.trim(); // NEW
 
     if (amount <= 0 || nameInput.isEmpty) {
       setState(() => _errorMessage = 'Please enter a valid amount and a contact name.');
@@ -96,7 +95,6 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
       String? existingId;
       String? newName;
 
-      // Smart check: Did they select a contact from the dropdown list?
       if (_selectedContact != null && _selectedContact!.name == nameInput) {
         existingId = _selectedContact!.id; 
       } else {
@@ -111,6 +109,7 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
         receiptPhotoBytes: _selectedPhotoBytes,
         voiceNoteBytes: _voiceNoteBytes,
         voiceNoteExt: _voiceNoteExt,
+        reason: reasonInput.isEmpty ? null : reasonInput, // NEW
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -125,6 +124,7 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
   void dispose() {
     _amountController.dispose();
     _nameController.dispose();
+    _reasonController.dispose(); // NEW
     super.dispose();
   }
 
@@ -167,7 +167,6 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
           
           const SizedBox(height: 12),
           
-          // The Smart Dropdown wrapped in a Consumer to access Riverpod streams!
           Consumer(
             builder: (context, ref, child) {
               final contactsAsync = ref.watch(contactsProvider);
@@ -177,11 +176,11 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
                   return LayoutBuilder(
                     builder: (context, constraints) {
                       return DropdownMenu<Contact>(
-                        width: constraints.maxWidth, // Fills the container width perfectly
+                        width: constraints.maxWidth,
                         controller: _nameController,
                         label: const Text('Contact Name'),
                         leadingIcon: const Icon(Icons.person_outline),
-                        enableFilter: true, // Enables typing to search the list
+                        enableFilter: true, 
                         requestFocusOnTap: true,
                         dropdownMenuEntries: contacts.map((c) => DropdownMenuEntry(value: c, label: c.name)).toList(),
                         onSelected: (contact) {
@@ -195,6 +194,19 @@ class _NewLogSheetState extends ConsumerState<NewLogSheet> {
                 error: (e, _) => Text('Failed to load contacts: $e', style: const TextStyle(color: Colors.red)),
               );
             },
+          ),
+
+          const SizedBox(height: 12),
+          
+          // NEW: Reason Text Field
+          TextField(
+            controller: _reasonController,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Reason (Optional)', 
+              prefixIcon: Icon(Icons.edit_note_rounded), 
+              border: OutlineInputBorder(),
+            ),
           ),
 
           const SizedBox(height: 16),

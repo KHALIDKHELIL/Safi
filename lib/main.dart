@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'firebase_options.dart';
-import 'screens/home_screen.dart';
 import 'providers/theme_provider.dart';
+import 'screens/auth_screen.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -28,7 +30,7 @@ class SafiApp extends ConsumerWidget {
     final currentThemeMode = ref.watch(themeProvider);
 
     return MaterialApp(
-      title: 'Safi Ledger',
+      title: 'Safi',
       debugShowCheckedModeBanner: false,
       themeMode: currentThemeMode, // 2. Bind the mode to Riverpod
       
@@ -50,7 +52,8 @@ class SafiApp extends ConsumerWidget {
         useMaterial3: true,
       ),
       
-      home: const HomeScreen(),
+      // 5. App launches to the AuthScreen first to enforce biometric security
+      home: const AuthScreen(),
     );
   }
 }

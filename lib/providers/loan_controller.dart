@@ -1,32 +1,39 @@
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart'; // Allows us to check if you are on Web or Android
+import 'package:flutter/foundation.dart'; 
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/loan_model.dart';
 import '../models/contact_model.dart';
+import 'notification_provider.dart'; // REQUIRED to access alarms
 
-final loanControllerProvider = Provider((ref) => LoanController());
+// FIXED: Now injects the NotificationController into the LoanController
+final loanControllerProvider = Provider((ref) {
+  final notifController = ref.read(notificationProvider);
+  return LoanController(notifController);
+});
 
 class LoanController {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final NotificationController _notificationController; // NEW
+
+  LoanController(this._notificationController);
 
   Future<void> createLog({
-    String? existingContactId, // NEW: Pass this if they picked from the dropdown
-    String? newContactName,    // NEW: Pass this if it's a brand new person
+    String? existingContactId, 
+    String? newContactName,    
     required double amount,
     required LoanType type,
     Uint8List? receiptPhotoBytes,
     Uint8List? voiceNoteBytes,
     String? voiceNoteExt,
+    String? reason,
   }) async {
     try {
       final batch = _firestore.batch();
       final loanRef = _firestore.collection('loans').doc();
       String finalContactId;
 
-      // 1. Determine if we are using an existing contact or creating a new one
       if (existingContactId != null) {
         finalContactId = existingContactId;
       } else if (newContactName != null && newContactName.isNotEmpty) {
@@ -38,7 +45,6 @@ class LoanController {
         throw Exception('Must provide a contact name.');
       }
 
-      // ... The rest of your local file saving logic stays EXACTLY the same ...
       String? localPhotoPath;
       String? localAudioPath;
 
@@ -57,15 +63,15 @@ class LoanController {
         }
       }
 
-      // 2. Save the loan with the correct Contact ID
       final newLoan = Loan(
         id: loanRef.id,
-        contactId: finalContactId, // Uses the matched or new ID!
+        contactId: finalContactId, 
         amount: amount,
         type: type,
         timestamp: DateTime.now(),
         receiptPhotoUrl: localPhotoPath,
         voiceNoteUrl: localAudioPath,
+        reason: reason,
       );
 
       batch.set(loanRef, newLoan.toMap());
@@ -75,24 +81,56 @@ class LoanController {
     }
   }
 
-  /// Toggles a loan between active and settled
   Future<void> toggleSettled(String loanId, bool currentStatus) async {
     try {
+      final isNowSettled = !currentStatus;
       await _firestore.collection('loans').doc(loanId).update({
-        'is_settled': !currentStatus,
+        'is_settled': isNowSettled,
+        'settled_date': isNowSettled ? FieldValue.serverTimestamp() : null,
       });
+
+      // FIXED: Cancel the native OS alarm if swiped to settle!
+      if (isNowSettled) {
+        _notificationController.cancelReminder(loanId);
+      }
     } catch (e) {
       throw Exception('Failed to update status: $e');
     }
   }
 
-  /// Permanently deletes the log AND cleans up the local phone storage
+  Future<void> logPartialPayment(Loan loan, double paymentAmount) async {
+    try {
+      final newPaidAmount = loan.paidAmount + paymentAmount;
+      final isNowSettled = newPaidAmount >= loan.amount;
+
+      await _firestore.collection('loans').doc(loan.id).update({
+        'paid_amount': newPaidAmount,
+        'is_settled': isNowSettled,
+        if (isNowSettled) 'settled_date': FieldValue.serverTimestamp(),
+      });
+
+      // FIXED: Cancel the native OS alarm if paid in full!
+      if (isNowSettled) {
+        _notificationController.cancelReminder(loan.id);
+      }
+    } catch (e) {
+      throw Exception('Failed to log payment: $e');
+    }
+  }
+  
+  Future<void> setDueDate(String loanId, DateTime dueDate) async {
+    await _firestore.collection('loans').doc(loanId).update({
+      'due_date': Timestamp.fromDate(dueDate),
+    });
+  }
+
   Future<void> deleteLog(String loanId, String? localPhotoPath, String? localAudioPath) async {
     try {
-      // 1. Delete from Firebase
       await _firestore.collection('loans').doc(loanId).delete();
       
-      // 2. Safely delete the local evidence files from the phone to free up space
+      // FIXED: Delete the native OS alarm if the record is trashed!
+      _notificationController.cancelReminder(loanId);
+      
       if (!kIsWeb) {
         if (localPhotoPath != null) {
           final photoFile = File(localPhotoPath);

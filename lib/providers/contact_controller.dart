@@ -15,7 +15,6 @@ class ContactController {
         id: docRef.id,
         name: name,
         phoneNumber: phoneNumber,
-        trustScore: trustScore,
       );
       await docRef.set(newContact.toMap());
     } catch (e) {
