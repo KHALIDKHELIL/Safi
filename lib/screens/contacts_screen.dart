@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/database_providers.dart';
 import '../models/loan_model.dart';
-import '../services/pdf_service.dart'; // REQUIRED for the PDF button
+import '../services/pdf_service.dart';
 import 'edit_contact_screen.dart';
+import 'contact_detail_screen.dart';
 
 class ContactsScreen extends ConsumerWidget {
   const ContactsScreen({super.key});
@@ -64,6 +65,14 @@ class ContactsScreen extends ConsumerWidget {
                       size: 16, color: Colors.amber,
                     )),
                   ),
+                  onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ContactDetailScreen(contact: contact),
+                    ),
+                  );
+                },
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
